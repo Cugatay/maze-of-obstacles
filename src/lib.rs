@@ -15,52 +15,6 @@ pub struct Player {
     pub y: usize,
 }
 
-impl Player {
-    pub fn move_to(&mut self, board: &mut Board, direction: MoveDirection) {
-        // let player = match chosen_player {
-        //     MovingPlayer::Top => &mut self.top_player,
-        //     MovingPlayer::Bottom => &mut self.bottom_player,
-        // };
-
-        match direction {
-            MoveDirection::Top => {
-                let current_pixel = &board.rows[self.y][self.x];
-
-                if self.y == 0 || current_pixel.top_wall {
-                    panic!("Illegal top move")
-                }
-
-                self.y -= 1;
-            }
-            MoveDirection::Bottom => {
-                let max_val = board.rows.len() - 1;
-                if self.y == max_val || board.rows[self.y + 1][self.x].top_wall {
-                    panic!("Illegal bottom move")
-                }
-
-                self.y += 1;
-            }
-            MoveDirection::Left => {
-                let current_pixel = &board.rows[self.y][self.x];
-
-                if self.y == 0 || current_pixel.left_wall {
-                    panic!("Illegal left move")
-                }
-
-                self.x -= 1;
-            }
-            MoveDirection::Right => {
-                let max_val = board.rows[0].len() - 1;
-                if self.x == max_val || board.rows[self.y][self.x + 1].left_wall {
-                    panic!("Illegal right move")
-                }
-
-                self.x += 1;
-            }
-        };
-    }
-}
-
 pub enum MoveDirection {
     Top,
     Bottom,
