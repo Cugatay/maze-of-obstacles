@@ -1,4 +1,8 @@
-use std::fmt;
+pub mod player;
+
+use std::{fmt, thread::current};
+
+pub use player::{MovingPlayer, Player, Position};
 
 #[derive(Default, Clone, Debug)]
 pub struct Pixel {
@@ -9,10 +13,9 @@ pub struct Pixel {
 
 type Row = [Pixel; 9];
 
-#[derive(Default, Clone, Debug)]
-pub struct Player {
-    pub x: usize,
-    pub y: usize,
+pub enum WallType {
+    Top,
+    Left,
 }
 
 pub enum MoveDirection {
@@ -20,11 +23,6 @@ pub enum MoveDirection {
     Bottom,
     Left,
     Right,
-}
-
-pub enum MovingPlayer {
-    Top,
-    Bottom,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -60,8 +58,20 @@ impl Board {
                         x += 1;
                     }
                 }
-                'T' => board.top_player = Player { x, y },
-                'B' => board.bottom_player = Player { x, y },
+                'T' => {
+                    board.top_player.position = Position { x, y };
+                    if current_pixel.is_none() {
+                        current_pixel = Some(Pixel::default())
+                    }
+                    // x += 1;
+                }
+                'B' => {
+                    board.bottom_player.position = Position { x, y };
+                    if current_pixel.is_none() {
+                        current_pixel = Some(Pixel::default())
+                    }
+                    // x += 1;
+                }
                 '-' => match current_pixel {
                     Some(ref mut val) => val.top_wall = true,
                     None => {
@@ -88,47 +98,89 @@ impl Board {
     }
 
     pub fn move_player(&mut self, chosen_player: MovingPlayer, direction: MoveDirection) {
-        let player = match chosen_player {
-            MovingPlayer::Top => &mut self.top_player,
-            MovingPlayer::Bottom => &mut self.bottom_player,
+        let new_pos = match chosen_player {
+            MovingPlayer::Top => &self.top_player,
+            MovingPlayer::Bottom => &self.bottom_player,
+        }
+        .position
+        .try_moving(self, direction)
+        .expect("Illegal move");
+
+        println!("new pos is: {new_pos:?}");
+        match chosen_player {
+            MovingPlayer::Top => self.top_player.position = new_pos,
+            MovingPlayer::Bottom => self.bottom_player.position = new_pos,
+        };
+    }
+
+    pub fn check_if_wall_is_possible(
+        &self,
+        moving_player: MovingPlayer,
+        position: Position,
+        wall_type: WallType,
+    ) {
+        let mut virtual_board = self.to_owned();
+        match wall_type {
+            WallType::Top => virtual_board.rows[position.y][position.x].top_wall = true,
+            WallType::Left => virtual_board.rows[position.y][position.x].left_wall = true,
+        }
+        let player = match moving_player {
+            MovingPlayer::Top => &virtual_board.top_player,
+            MovingPlayer::Bottom => &virtual_board.bottom_player,
         };
 
-        match direction {
-            MoveDirection::Top => {
-                let current_pixel = &self.rows[player.y][player.x];
+        let mut past_moves: Vec<Position> = vec![];
+        let mut current_moves = vec![player.position.to_owned()];
+        let mut push_moves: Vec<Position> = vec![];
 
-                if player.y == 0 || current_pixel.top_wall {
-                    panic!("Illegal top move")
-                }
+        while !current_moves.is_empty() {
+            for m in &current_moves {
+                let clone_pushes = push_moves.to_owned();
 
-                player.y -= 1;
+                push_moves.extend(
+                    [
+                        MoveDirection::Top,
+                        MoveDirection::Left,
+                        MoveDirection::Right,
+                        MoveDirection::Bottom,
+                    ]
+                    .into_iter()
+                    .filter_map(|dir| m.try_moving(&virtual_board, dir).ok())
+                    .filter(|pos| {
+                        // ![&current_moves, &clone_pushes, &past_moves]
+                        ![&clone_pushes, &past_moves].iter().any(|moves| {
+                            moves
+                                .iter()
+                                .any(|exist_pos| pos.x == exist_pos.x && pos.y == exist_pos.y)
+                        })
+                    }),
+                );
             }
-            MoveDirection::Bottom => {
-                let max_val = self.rows.len() - 1;
-                if player.y == max_val || self.rows[player.y + 1][player.x].top_wall {
-                    panic!("Illegal bottom move")
-                }
 
-                player.y += 1;
-            }
-            MoveDirection::Left => {
-                let current_pixel = &self.rows[player.y][player.x];
+            past_moves.extend(current_moves);
+            current_moves = push_moves;
+            push_moves = vec![];
+        }
 
-                if player.y == 0 || current_pixel.left_wall {
-                    panic!("Illegal left move")
-                }
-
-                player.x -= 1;
-            }
-            MoveDirection::Right => {
-                let max_val = self.rows[0].len() - 1;
-                if player.x == max_val || self.rows[player.y][player.x + 1].left_wall {
-                    panic!("Illegal right move")
-                }
-
-                player.x += 1;
-            }
+        let win_condition = |pos: Position| match moving_player {
+            MovingPlayer::Bottom => pos.y == 0,
+            MovingPlayer::Top => pos.y == virtual_board.rows.len() - 1,
         };
+
+        let if_has_win_path = past_moves
+            .iter()
+            .filter(|&pos| win_condition(pos.clone()))
+            .collect::<Vec<_>>();
+        // .count();
+        // > 0;
+
+        // println!("If has win path: {if_has_win_path}");
+        println!("Past moves: {past_moves:?}");
+        println!(
+            "
+
+If has win path: {if_has_win_path:?}"
+        );
     }
 }
 
@@ -141,11 +193,15 @@ impl fmt::Display for Board {
             let mut is_empty = true;
 
             for (x, pixel) in row.into_iter().enumerate() {
-                if (board.top_player.x, board.top_player.y) == (x, y) {
+                if (board.top_player.position.x, board.top_player.position.y) == (x, y) {
                     val += "T";
                     is_empty = false;
                 }
-                if (board.bottom_player.x, board.bottom_player.y) == (x, y) {
+                if (
+                    board.bottom_player.position.x,
+                    board.bottom_player.position.y,
+                ) == (x, y)
+                {
                     val += "B";
                     is_empty = false;
                 }
