@@ -119,14 +119,15 @@ impl Board {
         position: Position,
         wall_type: WallType,
     ) {
-        let mut virtual_board = self.to_owned();
+        let mut virtual_rows = self.rows.to_owned();
+
         match wall_type {
-            WallType::Top => virtual_board.rows[position.y][position.x].top_wall = true,
-            WallType::Left => virtual_board.rows[position.y][position.x].left_wall = true,
+            WallType::Top => virtual_rows[position.y][position.x].top_wall = true,
+            WallType::Left => virtual_rows[position.y][position.x].left_wall = true,
         }
         let player = match moving_player {
-            MovingPlayer::Top => &virtual_board.top_player,
-            MovingPlayer::Bottom => &virtual_board.bottom_player,
+            MovingPlayer::Top => &self.top_player,
+            MovingPlayer::Bottom => &self.bottom_player,
         };
 
         let mut past_moves: Vec<Position> = vec![];
@@ -145,7 +146,7 @@ impl Board {
                         MoveDirection::Bottom,
                     ]
                     .into_iter()
-                    .filter_map(|dir| m.try_moving(&virtual_board, dir).ok())
+                    .filter_map(|dir| m.try_moving(self, dir).ok())
                     .filter(|pos| {
                         // ![&current_moves, &clone_pushes, &past_moves]
                         ![&clone_pushes, &past_moves].iter().any(|moves| {
@@ -164,7 +165,7 @@ impl Board {
 
         let win_condition = |pos: Position| match moving_player {
             MovingPlayer::Bottom => pos.y == 0,
-            MovingPlayer::Top => pos.y == virtual_board.rows.len() - 1,
+            MovingPlayer::Top => pos.y == virtual_rows.len() - 1,
         };
 
         let if_has_win_path = past_moves
